@@ -381,6 +381,13 @@ If you have any questions, please check the complete tutorial or submit an issue
 
 ## 📝 Changelog
 
+### v1.6.1 (2026-02-02)
+
+**New**
+- Gateway bind customization: loopback / 0.0.0.0 / custom IP
+- Gateway port customization
+- Environment variables: `GATEWAY_BIND`, `GATEWAY_PORT`
+
 ### v1.6.0 (2026-02-02)
 
 **🚀 Script Features**

@@ -59,6 +59,8 @@ OpenClaw AI 助手一键安装脚本 v1.6.0
   TELEGRAM_DM_POLICY  DM 策略: pairing(默认) 或 open
   TELEGRAM_ALLOW_FROM 白名单 JSON 数组（默认: ["*"]）
   EXEC_APPROVAL       命令审批: true(默认) 或 false
+  GATEWAY_BIND        网关绑定: loopback(默认) 或 0.0.0.0 或指定 IP
+  GATEWAY_PORT        网关端口（默认: 18789）
 
 示例:
   # 交互式安装
@@ -221,6 +223,8 @@ collect_config() {
         TELEGRAM_DM_POLICY="${TELEGRAM_DM_POLICY:-pairing}"
         TELEGRAM_ALLOW_FROM="${TELEGRAM_ALLOW_FROM:-[\"*\"]}"
         EXEC_APPROVAL="${EXEC_APPROVAL:-true}"
+        GATEWAY_BIND="${GATEWAY_BIND:-loopback}"
+        GATEWAY_PORT="${GATEWAY_PORT:-18789}"
         return
     fi
 
@@ -290,6 +294,22 @@ collect_config() {
     echo
     read -p "是否启用命令执行审批？(Y/n): " APPROVAL_CHOICE
     EXEC_APPROVAL=$([[ "$APPROVAL_CHOICE" =~ ^[Nn]$ ]] && echo "false" || echo "true")
+
+    # 网关配置
+    echo
+    echo "网关绑定设置："
+    echo "1) 仅本地访问 (loopback，推荐)"
+    echo "2) 允许公网访问 (0.0.0.0)"
+    echo "3) 自定义 IP"
+    read -p "请选择 (1-3) [默认1]: " BIND_CHOICE
+    case "$BIND_CHOICE" in
+        2) GATEWAY_BIND="0.0.0.0" ;;
+        3) read -p "请输入绑定 IP: " GATEWAY_BIND ;;
+        *) GATEWAY_BIND="loopback" ;;
+    esac
+
+    read -p "网关端口 [默认18789]: " GATEWAY_PORT_INPUT
+    GATEWAY_PORT=${GATEWAY_PORT_INPUT:-18789}
     
     echo
     log_success "配置信息收集完成"
@@ -579,8 +599,8 @@ configure_openclaw() {
   },
   "gateway": {
     "mode": "local",
-    "bind": "loopback",
-    "port": 18789,
+    "bind": "${GATEWAY_BIND}",
+    "port": ${GATEWAY_PORT},
     "auth": {
       "mode": "token",
       "token": "${AUTH_TOKEN}"

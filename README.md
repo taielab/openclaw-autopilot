@@ -56,6 +56,9 @@ chmod +x install-openclaw.sh
 ```bash
 export TELEGRAM_BOT_TOKEN="your-bot-token"
 export API_KEY="your-api-key"
+# 可选：自定义网关配置
+export GATEWAY_BIND="loopback"  # 或 0.0.0.0 开放公网
+export GATEWAY_PORT="18789"
 sudo -E ./install-openclaw.sh -n
 ```
 
@@ -398,6 +401,13 @@ AI 安全工坊
 
 
 ## 📝 更新日志
+
+### v1.6.1 (2026-02-02)
+
+**新增**
+- 网关绑定自定义：loopback / 0.0.0.0 / 指定 IP
+- 网关端口自定义
+- 环境变量：`GATEWAY_BIND`、`GATEWAY_PORT`
 
 ### v1.6.0 (2026-02-02)
 
