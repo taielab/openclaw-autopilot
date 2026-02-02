@@ -4,10 +4,16 @@
 # OpenClaw AI 助手一键安装脚本
 # 适用于 Ubuntu 22.04 LTS
 # 作者：AI 安全工坊
-# 版本：1.0.0
+# 版本：1.6.0
+# OpenClaw 版本：v2026.1.30
 #############################################
 
 set -e
+
+# 全局变量
+NON_INTERACTIVE=false
+UPDATE_MODE=false
+SCENARIO="personal"
 
 # 颜色定义
 RED='\033[0;31m'
@@ -33,6 +39,70 @@ log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
+# 显示帮助
+show_help() {
+    cat << EOF
+OpenClaw AI 助手一键安装脚本 v1.6.0
+
+用法: $0 [选项]
+
+选项:
+  -h, --help          显示帮助信息
+  -n, --non-interactive  非交互模式（需要设置环境变量）
+  -u, --update        更新模式（保留现有配置）
+  -s, --scenario      使用场景: personal(默认), team, dev
+
+环境变量（非交互模式必需）:
+  TELEGRAM_BOT_TOKEN  Telegram Bot Token
+  API_KEY             API Key（云雾 AI 或其他）
+  API_BASE_URL        API Base URL（默认: https://yunwu.ai）
+  TELEGRAM_DM_POLICY  DM 策略: pairing(默认) 或 open
+  TELEGRAM_ALLOW_FROM 白名单 JSON 数组（默认: ["*"]）
+  EXEC_APPROVAL       命令审批: true(默认) 或 false
+
+示例:
+  # 交互式安装
+  $0
+
+  # 非交互式安装
+  TELEGRAM_BOT_TOKEN="xxx" API_KEY="xxx" $0 -n
+
+  # 指定白名单
+  TELEGRAM_BOT_TOKEN="xxx" API_KEY="xxx" TELEGRAM_ALLOW_FROM='["123456","789012"]' $0 -n
+
+  # 更新模式
+  $0 -u
+EOF
+    exit 0
+}
+
+# 解析命令行参数
+parse_args() {
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            -h|--help)
+                show_help
+                ;;
+            -n|--non-interactive)
+                NON_INTERACTIVE=true
+                shift
+                ;;
+            -u|--update)
+                UPDATE_MODE=true
+                shift
+                ;;
+            -s|--scenario)
+                SCENARIO="$2"
+                shift 2
+                ;;
+            *)
+                log_error "未知参数: $1"
+                show_help
+                ;;
+        esac
+    done
+}
+
 # 检查是否为 root 用户
 check_root() {
     if [ "$EUID" -ne 0 ]; then
@@ -56,18 +126,104 @@ check_system() {
     
     if [[ "$OS" != "Ubuntu" ]] || [[ "$VER" != "22.04" ]]; then
         log_warning "推荐使用 Ubuntu 22.04 LTS，当前系统：$OS $VER"
-        read -p "是否继续？(y/n) " -n 1 -r
-        echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            exit 1
+        if [ "$NON_INTERACTIVE" = false ]; then
+            read -p "是否继续？(y/n) " -n 1 -r
+            echo
+            if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                exit 1
+            fi
         fi
     fi
     
     log_success "系统检查通过"
 }
 
+# 检查时区
+check_timezone() {
+    log_info "检查时区设置..."
+    CURRENT_TZ=$(timedatectl show --property=Timezone --value 2>/dev/null || echo "unknown")
+    log_info "当前时区: $CURRENT_TZ"
+    
+    if [[ "$CURRENT_TZ" == "Etc/UTC" ]] || [[ "$CURRENT_TZ" == "UTC" ]]; then
+        log_warning "建议设置本地时区以便会话重置时间准确"
+        log_info "可使用: timedatectl set-timezone Asia/Shanghai"
+    fi
+}
+
+# 检查防火墙
+check_firewall() {
+    log_info "检查防火墙状态..."
+    
+    if command -v ufw &> /dev/null; then
+        UFW_STATUS=$(ufw status | head -1)
+        if [[ "$UFW_STATUS" == *"active"* ]]; then
+            log_warning "UFW 防火墙已启用"
+            log_info "OpenClaw Gateway 默认绑定 loopback，无需开放端口"
+        fi
+    fi
+}
+
+# 备份现有配置
+backup_config() {
+    if [ -f ~/.openclaw/openclaw.json ]; then
+        BACKUP_DIR=~/.openclaw/backup-$(date +%Y%m%d-%H%M%S)
+        log_info "备份现有配置到: $BACKUP_DIR"
+        mkdir -p "$BACKUP_DIR"
+        cp -r ~/.openclaw/openclaw.json "$BACKUP_DIR/" 2>/dev/null || true
+        cp -r ~/.openclaw/agents "$BACKUP_DIR/" 2>/dev/null || true
+        cp -r ~/.openclaw/credentials "$BACKUP_DIR/" 2>/dev/null || true
+        log_success "配置已备份"
+    fi
+}
+
 # 收集配置信息
 collect_config() {
+    # 检查是否已有配置（更新模式）
+    if [ "$UPDATE_MODE" = true ] && [ -f ~/.openclaw/openclaw.json ]; then
+        log_info "更新模式：保留现有配置"
+        return
+    fi
+    
+    # 检查是否需要重装确认
+    if [ -f ~/.openclaw/openclaw.json ] && [ "$NON_INTERACTIVE" = false ]; then
+        log_warning "检测到已有配置"
+        echo
+        echo "选择操作："
+        echo "1) 更新 OpenClaw（保留配置）"
+        echo "2) 完全重装（删除配置）"
+        read -p "请选择 (1-2): " INSTALL_CHOICE
+        
+        if [ "$INSTALL_CHOICE" = "1" ]; then
+            UPDATE_MODE=true
+            return
+        elif [ "$INSTALL_CHOICE" = "2" ]; then
+            log_error "⚠️  危险操作：完全重装将删除所有配置！"
+            echo
+            read -p "确认删除？请输入 'DELETE' 确认: " CONFIRM_DELETE
+            if [ "$CONFIRM_DELETE" = "DELETE" ]; then
+                backup_config
+                rm -rf ~/.openclaw/openclaw.json ~/.openclaw/agents ~/.openclaw/sessions
+                log_success "配置已清除（备份已保留）"
+            else
+                log_info "已取消重装操作"
+                exit 0
+            fi
+        fi
+    fi
+
+    # 非交互模式：从环境变量读取
+    if [ "$NON_INTERACTIVE" = true ]; then
+        if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$API_KEY" ]; then
+            log_error "非交互模式需要设置 TELEGRAM_BOT_TOKEN 和 API_KEY 环境变量"
+            exit 1
+        fi
+        API_BASE_URL="${API_BASE_URL:-https://yunwu.ai}"
+        TELEGRAM_DM_POLICY="${TELEGRAM_DM_POLICY:-pairing}"
+        TELEGRAM_ALLOW_FROM="${TELEGRAM_ALLOW_FROM:-[\"*\"]}"
+        EXEC_APPROVAL="${EXEC_APPROVAL:-true}"
+        return
+    fi
+
     log_info "请输入配置信息..."
     echo
     
@@ -82,22 +238,15 @@ collect_config() {
     echo
     echo "请选择 API 服务商："
     echo "1) 云雾 AI (推荐，一个 Key 访问所有模型)"
-    echo "2) OpenAI 官方"
-    echo "3) Anthropic 官方"
-    read -p "请选择 (1-3): " API_CHOICE
+    echo "2) 自定义 API 端点"
+    read -p "请选择 (1-2): " API_CHOICE
     
     case $API_CHOICE in
         1)
-            API_PROVIDER="yunwu"
             API_BASE_URL="https://yunwu.ai"
             ;;
         2)
-            API_PROVIDER="openai"
-            API_BASE_URL="https://api.openai.com"
-            ;;
-        3)
-            API_PROVIDER="anthropic"
-            API_BASE_URL="https://api.anthropic.com"
+            read -p "请输入 API Base URL: " API_BASE_URL
             ;;
         *)
             log_error "无效的选择"
@@ -111,6 +260,36 @@ collect_config() {
         log_error "API Key 不能为空"
         exit 1
     fi
+
+    # DM 策略
+    # 白名单设置
+    echo
+    echo "请设置 Telegram 白名单："
+    echo "1) 允许所有人 (*)"
+    echo "2) 指定用户 ID（多个用逗号分隔）"
+    read -p "请选择 (1-2): " ALLOWLIST_CHOICE
+    if [ "$ALLOWLIST_CHOICE" = "2" ]; then
+        read -p "请输入允许的用户 ID（逗号分隔）: " ALLOW_IDS
+        # 转换为 JSON 数组格式
+        TELEGRAM_ALLOW_FROM=$(echo "$ALLOW_IDS" | sed 's/,/","/g' | sed 's/^/["/;s/$/"]/')
+        # 白名单模式必须使用 pairing 策略
+        TELEGRAM_DM_POLICY="pairing"
+        log_info "已自动设置 DM 策略为 pairing（白名单模式要求）"
+    else
+        TELEGRAM_ALLOW_FROM='["*"]'
+        # 允许所有人时询问 DM 策略
+        echo
+        echo "请选择 DM 策略："
+        echo "1) pairing (推荐，需要配对码验证)"
+        echo "2) open (允许所有人直接访问)"
+        read -p "请选择 (1-2): " DM_CHOICE
+        TELEGRAM_DM_POLICY=$([[ "$DM_CHOICE" = "2" ]] && echo "open" || echo "pairing")
+    fi
+
+    # 命令审批
+    echo
+    read -p "是否启用命令执行审批？(Y/n): " APPROVAL_CHOICE
+    EXEC_APPROVAL=$([[ "$APPROVAL_CHOICE" =~ ^[Nn]$ ]] && echo "false" || echo "true")
     
     echo
     log_success "配置信息收集完成"
@@ -125,11 +304,20 @@ install_nodejs() {
         if [ "$NODE_VERSION" -ge 22 ]; then
             log_success "Node.js 已安装 ($(node -v))"
             return
+        else
+            log_warning "Node.js 版本过低 ($(node -v))，需要 >= 22"
         fi
     fi
     
     curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
     apt-get install -y nodejs
+    
+    # 验证安装
+    NODE_VERSION=$(node -v | cut -d'v' -f2 | cut -d'.' -f1)
+    if [ "$NODE_VERSION" -lt 22 ]; then
+        log_error "Node.js 安装失败，版本不满足要求"
+        exit 1
+    fi
     
     log_success "Node.js 安装完成 ($(node -v))"
 }
@@ -138,10 +326,18 @@ install_nodejs() {
 install_openclaw() {
     log_info "安装 OpenClaw..."
     
+    if [ "$UPDATE_MODE" = true ]; then
+        log_info "更新模式：升级 OpenClaw"
+    fi
+    
     npm install -g openclaw@latest
     
     OPENCLAW_VERSION=$(openclaw --version 2>&1 | head -1 || echo "unknown")
     log_success "OpenClaw 安装完成 ($OPENCLAW_VERSION)"
+    
+    # 安装 CLI 自动补全
+    log_info "安装 CLI 自动补全..."
+    openclaw completion install 2>/dev/null || log_warning "自动补全安装跳过"
 }
 
 # 配置 OpenClaw
@@ -184,6 +380,20 @@ configure_openclaw() {
           "api-proxy-claude/claude-opus-4-5-20251101",
           "api-proxy-deepseek/deepseek-v3.2"
         ]
+      },
+      "timeoutSeconds": 300,
+      "mediaMaxMb": 20,
+      "maxConcurrent": 12,
+      "thinkingDefault": "low",
+      "userTimezone": "Asia/Shanghai",
+      "envelopeTimestamp": "on",
+      "compaction": {
+        "mode": "safeguard",
+        "reserveTokensFloor": 10000,
+        "maxHistoryShare": 0.7
+      },
+      "subagents": {
+        "maxConcurrent": 24
       }
     }
   },
@@ -275,9 +485,97 @@ configure_openclaw() {
   "channels": {
     "telegram": {
       "botToken": "${TELEGRAM_BOT_TOKEN}",
-      "allowFrom": ["*"],
-      "dmPolicy": "open"
+      "allowFrom": ${TELEGRAM_ALLOW_FROM},
+      "dmPolicy": "${TELEGRAM_DM_POLICY}",
+      "groupPolicy": "allowlist",
+      "streamMode": "partial"
     }
+  },
+  "approvals": {
+    "exec": {
+      "enabled": ${EXEC_APPROVAL}
+    }
+  },
+  "commands": {
+    "native": "auto",
+    "nativeSkills": "auto"
+  },
+  "messages": {
+    "ackReactionScope": "group-mentions"
+  },
+  "session": {
+    "scope": "per-sender",
+    "dmScope": "per-channel-peer",
+    "idleMinutes": 30,
+    "reset": {
+      "mode": "daily",
+      "atHour": 3
+    },
+    "typingMode": "thinking",
+    "typingIntervalSeconds": 3
+  },
+  "env": {
+    "shellEnv": {
+      "enabled": true,
+      "timeoutMs": 5000
+    }
+  },
+  "cron": {
+    "enabled": true,
+    "maxConcurrentRuns": 5
+  },
+  "media": {
+    "preserveFilenames": true
+  },
+  "ui": {
+    "assistant": {
+      "name": "OpenClaw AI",
+      "avatar": "🤖"
+    }
+  },
+  "web": {
+    "enabled": true
+  },
+  "canvasHost": {
+    "enabled": true
+  },
+  "discovery": {
+    "mdns": {
+      "mode": "minimal"
+    }
+  },
+  "broadcast": {
+    "strategy": "parallel"
+  },
+  "bindings": [],
+  "hooks": {
+    "enabled": false
+  },
+  "nodeHost": {
+    "browserProxy": {
+      "enabled": false
+    }
+  },
+  "talk": {
+    "interruptOnSpeech": false
+  },
+  "audio": {
+    "transcription": {
+      "command": ["whisper", "--model", "base"]
+    }
+  },
+  "logging": {
+    "level": "info",
+    "consoleLevel": "info",
+    "consoleStyle": "compact",
+    "redactSensitive": "tools"
+  },
+  "update": {
+    "channel": "stable",
+    "checkOnStart": true
+  },
+  "diagnostics": {
+    "enabled": true
   },
   "gateway": {
     "mode": "local",
@@ -579,13 +877,28 @@ show_completion() {
 main() {
     echo
     echo "========================================="
-    echo "  OpenClaw AI 助手一键安装脚本"
+    echo "  OpenClaw AI 助手一键安装脚本 v1.6.0"
     echo "========================================="
     echo
     
+    parse_args "$@"
+    
     check_root
     check_system
+    check_timezone
+    check_firewall
     collect_config
+    
+    # 更新模式跳过配置
+    if [ "$UPDATE_MODE" = true ]; then
+        log_info "更新模式：仅升级 OpenClaw"
+        install_nodejs
+        install_openclaw
+        systemctl --user restart openclaw-gateway 2>/dev/null || true
+        log_success "更新完成！"
+        openclaw --version
+        exit 0
+    fi
     
     echo
     log_info "开始安装..."

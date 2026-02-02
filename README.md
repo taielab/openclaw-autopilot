@@ -5,7 +5,7 @@
 **中文** | [English](README_EN.md)
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
-![Version](https://img.shields.io/badge/version-1.0.0-green.svg)
+![Version](https://img.shields.io/badge/version-1.6.0-green.svg)
 ![Platform](https://img.shields.io/badge/platform-Ubuntu%2022.04-orange.svg)
 ![Models](https://img.shields.io/badge/models-15-brightgreen.svg)
 ![Tools](https://img.shields.io/badge/tools-20%2B-blue.svg)
@@ -30,21 +30,11 @@
 
 ## 📦 包含内容
 
-1. **完整部署教程** (`OpenClaw自动化部署教程.md`)
-   - 详细的分步指南
-   - 配置说明
-   - 故障排查
-   - 进阶配置
-
-2. **一键安装脚本** (`install-openclaw.sh`)
-   - 自动安装所有依赖
-   - 交互式配置
-   - 自动启动服务
-
-3. **配置模板** (`配置模板.md`)
-   - 完整的配置文件示例
-   - 环境变量配置
-   - 快速配置命令
+**一键安装脚本** (`install-openclaw.sh`)
+- 自动安装所有依赖
+- 交互式/非交互式配置
+- 自动启动服务
+- 配置备份和恢复
 
 ## 快速开始
 
@@ -61,7 +51,22 @@ chmod +x install-openclaw.sh
 ./install-openclaw.sh
 ```
 
-### 方式二：使用 Claude Code 对话式部署
+### 方式二：非交互式安装
+
+```bash
+export TELEGRAM_BOT_TOKEN="your-bot-token"
+export API_KEY="your-api-key"
+sudo -E ./install-openclaw.sh -n
+```
+
+### 方式三：更新模式
+
+```bash
+# 保留配置，仅升级 OpenClaw
+sudo ./install-openclaw.sh -u
+```
+
+### 方式四：使用 Claude Code 对话式部署
 
 1. 准备以下信息：
    - VPS 服务器 IP 和 SSH 凭据
@@ -336,7 +341,6 @@ systemctl --user restart openclaw-gateway
 ### Q: 遇到问题如何获取帮助？
 
 A: 
-1. 查看完整教程 `OpenClaw自动化部署教程.md`
 2. 运行 `openclaw doctor` 进行健康检查
 3. 查看日志 `journalctl --user -u openclaw-gateway -f`
 4. 在 GitHub 提 Issue
@@ -391,3 +395,29 @@ AI 安全工坊
 **祝你使用愉快！** 
 
 如有问题，请查看完整教程或在 GitHub 提 Issue。
+
+
+## 📝 更新日志
+
+### v1.6.0 (2026-02-02)
+
+**🚀 脚本功能**
+- 非交互模式 (`-n`) + 环境变量支持
+- 更新模式 (`-u`) 保留配置升级
+- 配置备份 + DELETE 确认机制
+- Telegram 白名单配置
+- CLI 自动补全安装
+
+**⚙️ 配置优化 (93% 覆盖率)**
+- Agent: timeout(300s), mediaMax(20MB), thinking(low), compaction
+- Session: reset(daily/3am), dmScope(per-channel-peer), typingMode
+- Telegram: streamMode(partial), groupPolicy(allowlist)
+- System: env, cron, web, canvasHost, logging, diagnostics
+
+**🔐 安全增强**
+- 白名单模式自动设置 dmPolicy=pairing
+- 配置文件权限 chmod 600
+- 会话隔离 per-channel-peer
+
+### v1.0.0 (2026-01-29)
+- 初始版本发布

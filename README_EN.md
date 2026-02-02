@@ -5,7 +5,7 @@
 [中文](README.md) | **English**
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
-![Version](https://img.shields.io/badge/version-1.0.0-green.svg)
+![Version](https://img.shields.io/badge/version-1.6.0-green.svg)
 ![Platform](https://img.shields.io/badge/platform-Ubuntu%2022.04-orange.svg)
 ![Models](https://img.shields.io/badge/models-15-brightgreen.svg)
 ![Tools](https://img.shields.io/badge/tools-20%2B-blue.svg)
@@ -30,16 +30,11 @@
 
 ## 📦 What's Included
 
-1. **Complete Deployment Tutorial** (`OpenClaw自动化部署教程.md`)
-   - Step-by-step guide
-   - Configuration instructions
-   - Troubleshooting
-   - Advanced configuration
-
-2. **One-Click Installation Script** (`install-openclaw.sh`)
-   - Auto-install all dependencies
-   - Interactive configuration
-   - Auto-start service
+**One-Click Installation Script** (`install-openclaw.sh`)
+- Auto-install all dependencies
+- Interactive/non-interactive configuration
+- Auto-start service
+- Config backup and restore
 
 ## Quick Start
 
@@ -332,7 +327,6 @@ systemctl --user restart openclaw-gateway
 ### Q: How to get help when encountering issues?
 
 A: 
-1. Check complete tutorial `OpenClaw自动化部署教程.md`
 2. Run `openclaw doctor` for health check
 3. View logs `journalctl --user -u openclaw-gateway -f`
 4. Submit an Issue on GitHub
@@ -383,3 +377,29 @@ MIT License
 **Enjoy!** 
 
 If you have any questions, please check the complete tutorial or submit an issue on GitHub.
+
+
+## 📝 Changelog
+
+### v1.6.0 (2026-02-02)
+
+**🚀 Script Features**
+- Non-interactive mode (`-n`) + environment variables
+- Update mode (`-u`) preserves config
+- Config backup + DELETE confirmation
+- Telegram allowlist configuration
+- CLI auto-completion
+
+**⚙️ Configuration (93% coverage)**
+- Agent: timeout(300s), mediaMax(20MB), thinking(low), compaction
+- Session: reset(daily/3am), dmScope(per-channel-peer), typingMode
+- Telegram: streamMode(partial), groupPolicy(allowlist)
+- System: env, cron, web, canvasHost, logging, diagnostics
+
+**🔐 Security**
+- Allowlist mode auto-sets dmPolicy=pairing
+- Config file permissions chmod 600
+- Session isolation per-channel-peer
+
+### v1.0.0 (2026-01-29)
+- Initial release
